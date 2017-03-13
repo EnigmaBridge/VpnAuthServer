@@ -82,9 +82,8 @@ setup(
 
     entry_points={
         'console_scripts': [
-            'ebstall-cli = ebstall.clirouter:main',
-            'ebstall-pki-cli = ebstall.cli:main',
-            'ebstall-privspace-cli = ebstall.clivpn:main',
+            'vpnauth-notif = vpnauth.notif:main',
+            'vpnauth-server = vpnauth.server:main',
         ],
     }
 )
