@@ -3,13 +3,63 @@
 
 import os
 import stat
+import json
 import hashlib
+import base64
+import collections
 
 import errno
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 
 import errors
+
+
+PAYLOAD_ENC_TYPE = 'AES-256-GCM-SHA256'
+
+
+def protect_payload(payload, config):
+    """
+    Builds a new JSON payload
+    :param payload:
+    :param config:
+    :return:
+    """
+    js = json.dumps(payload)
+    key = make_key(config.enc_password)
+
+    iv, ciphertext, tag = encrypt(key, plaintext=js)
+
+    ret = collections.OrderedDict()
+    ret['enctype'] = PAYLOAD_ENC_TYPE
+    ret['iv'] = base64.b64encode(iv)
+    ret['tag'] = base64.b64encode(tag)
+    ret['payload'] = base64.b64encode(ciphertext)
+    return ret
+
+
+def unprotect_payload(payload, config):
+    """
+    Processes protected request payload
+    :param payload:
+    :param config:
+    :return:
+    """
+    if payload is None:
+        raise ValueError('payload is None')
+    if 'enctype' not in payload:
+        raise ValueError('Enctype not in payload')
+    if payload['enctype'] != PAYLOAD_ENC_TYPE:
+        raise ValueError('Unknown payload protection: %s' % payload['enctype'])
+
+    key = make_key(config.enc_password)
+    iv = base64.b64decode(payload['iv'])
+    tag = base64.b64decode(payload['tag'])
+    ciphertext = base64.b64decode(payload['payload'])
+    plaintext = decrypt(key=key, iv=iv, ciphertext=ciphertext, tag=tag)
+
+    js = json.loads(plaintext)
+    return js
 
 
 def make_or_verify_dir(directory, mode=0o755, uid=0, strict=False):
