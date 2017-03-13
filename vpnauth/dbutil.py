@@ -43,6 +43,9 @@ class VpnUserState(Base):
     client_remote_port = Column(Integer, nullable=True)
     proto = Column(String(8), nullable=True)
 
+    bytes_sent = Column(BigInteger, nullable=True)
+    bytes_recv = Column(BigInteger, nullable=True)
+
 
 class VpnUserSessions(Base):
     """
