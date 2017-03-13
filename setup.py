@@ -19,7 +19,8 @@ install_requires = [
     'six',
     'future',
     'SQLAlchemy',
-    'shellescape'
+    'shellescape',
+    'flask'
 ]
 
 # env markers in extras_require cause problems with older pip: #517

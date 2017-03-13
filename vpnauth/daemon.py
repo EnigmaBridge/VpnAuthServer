@@ -24,6 +24,9 @@ import os
 import sys
 import time
 import signal
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Daemon(object):
@@ -52,6 +55,7 @@ class Daemon(object):
         """
         try:
             pid = os.fork()
+            logger.debug('First forking, pid: %s' % pid)
             if pid > 0:
                 # Exit first parent
                 sys.exit(0)
@@ -68,6 +72,7 @@ class Daemon(object):
         # Do second fork
         try:
             pid = os.fork()
+            logger.debug('Second forking, pid: %s' % pid)
             if pid > 0:
                 # Exit from second parent
                 sys.exit(0)
@@ -107,9 +112,9 @@ class Daemon(object):
             print "Started"
 
         # Write pidfile
-        atexit.register(
-            self.delpid)  # Make sure pid file is removed if we quit
+        atexit.register(self.delpid)  # Make sure pid file is removed if we quit
         pid = str(os.getpid())
+        logger.debug('Updating pid file: %s' % pid)
         file(self.pidfile, 'w+').write("%s\n" % pid)
 
     def delpid(self):
@@ -119,6 +124,7 @@ class Daemon(object):
         """
         Start the daemon
         """
+        logger.debug('Starting daemon')
 
         if self.verbose >= 1:
             print "Starting..."
@@ -134,8 +140,8 @@ class Daemon(object):
             pid = None
 
         if pid:
-            message = "pidfile %s already exists. Is it already running?\n"
-            sys.stderr.write(message % self.pidfile)
+            message = "pidfile %s already exists (%s). Is it already running?\n" % (self.pidfile, pid)
+            sys.stderr.write(message)
             sys.exit(1)
 
         # Start the daemon
@@ -146,7 +152,7 @@ class Daemon(object):
         """
         Stop the daemon
         """
-
+        logger.debug('Stopping daemon')
         if self.verbose >= 1:
             print "Stopping..."
 

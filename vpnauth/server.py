@@ -8,18 +8,22 @@ Server part of the script
 from daemon import Daemon
 from core import Core
 from config import Config
+from dbutil import MySQL
 
 import threading
 import pid
 import time
 import os
 import sys
+import util
 import argparse
 from threading import Lock as Lock
 from threading import RLock as RLock
 import logging
 import coloredlogs
 import traceback
+import BaseHTTPServer
+from flask import Flask, jsonify, request
 
 
 __author__ = 'dusanklinec'
@@ -43,6 +47,8 @@ class Server(object):
     """
     Main server object
     """
+    HTTP_PORT = 32080
+    HTTPS_PORT = 32443
 
     def __init__(self, *args, **kwargs):
         self.core = Core()
@@ -59,6 +65,7 @@ class Server(object):
 
         self.last_result = None
 
+        self.flask = Flask(__name__)
         self.db = None
         self.queue_thread = None
         self.queue_lock = RLock()
@@ -99,6 +106,38 @@ class Server(object):
         self.last_result = code
         return code
 
+    def init_log(self):
+        """
+        Initializes logging
+        :return:
+        """
+        util.make_or_verify_dir(self.logdir)
+
+    def init_db(self):
+        """
+        Initializes the database
+        :return:
+        """
+        self.db = MySQL(config=self.config)
+        self.db.init_db()
+
+    #
+    # REST interface
+    #
+
+    def init_rest(self):
+        """
+        Initializes rest server
+        :return:
+        """
+        @self.flask.route('/api/v1.0/dump', methods=['GET'])
+        def rest_dump():
+            return jsonify({'tasks': 'ok%s' % self})
+
+    #
+    # Server
+    #
+
     def start_daemon(self):
         """
         Starts daemon mode
@@ -110,58 +149,29 @@ class Server(object):
                                 app=self)
         self.daemon.start()
 
+    def shutdown_server(self):
+        """
+        Shutdown flask server
+        :return:
+        """
+        func = request.environ.get('werkzeug.server.shutdown')
+        if func is None:
+            raise RuntimeError('Not running with the Werkzeug Server')
+        func()
+
     def work(self):
         """
         Main work method for the server - accepting incoming connections.
         :return:
         """
-        logger.info('Scanning thread started %s %s %s' % (os.getpid(), os.getppid(), threading.current_thread()))
+        logger.info('REST thread started %s %s %s' % (os.getpid(), os.getppid(), threading.current_thread()))
         try:
-
-
-            contacted = set([])
-            maxid = self.config.maxid if self.config.maxid is not None else 0L
-
-            while not self.stop_event.is_set():
-                # do simple search, later, here will be policy from the rule
-                # https://dev.twitter.com/rest/reference/get/search/tweets
-
-                # For each rule do the query & take the action
-                for rule_idx, rule in enumerate(self.rules):
-                    try:
-                        self.current_rule = rule_idx
-                        res = self.read_all_new_tweets(q=rule.q, rule=rule, since_id=rule.since_id,
-                                                       contacted=contacted, process_tweet=self.rule_process)
-                        since_id, max_id, contacted = res
-                        rule.since_id = since_id
-
-                    except Exception as e:
-                        traceback.print_exc()
-                        logger.error('Exception: %s' % e)
-
-                    finally:
-                        self.rule_update()
-                        self.flush_audit()
-
-                    if self.stop_event.is_set():
-                        break
-
-                self.current_rule = None
-                Core.write_configuration(self.config)
-
-                # sleep time - interruptible.
-                sleep_time = 20 if self.args.fast else self.args.sleep
-                self.interruptible_sleep(sleep_time)
+            r = self.flask.run(debug=self.args.server_debug, port=self.HTTP_PORT)
+            logger.info('Terminating flask: %s' % r)
 
         except Exception as e:
-            traceback.print_exc()
             logger.error('Exception: %s' % e)
-            logger.error(e)
-
-        finally:
-            self.rule_update()
-            self.flush_audit()
-
+            logger.error(traceback.format_exc())
         logger.info('Work loop terminated')
 
     def work_loop(self):
@@ -177,45 +187,24 @@ class Server(object):
             Core.write_configuration(Config.default_config())
             return self.return_code(1)
 
-        # load rules.
-        rule_ok = self.rule_load()
-        if not rule_ok:
-            logger.info('Starting without rules file - manual mode')
-            self.cmdloop()
-            return
-
-        if not self.check_root() or not self.check_pid():
-            return self.return_code(1)
-
-        # DB init
-        self.init_db()
-
-        # Resume state from monitoring files if we have any
-        self.state_resume()
-        self.follow_history_resume()
-
-        # Kick off twitter - for initial load
-        self.twitter_login_if_needed()
+        # Init
+        self.init_log()
+        # self.init_db() # TODO: fix
+        self.init_rest()
 
         # Sub threads
-        self.follow_thread = threading.Thread(target=self.follow_main, args=())
-        self.follow_thread.start()
+        # self.queue_thread = threading.Thread(target=self.follow_main, args=())
+        # self.follow_thread.start()
 
         # Daemon vs. run mode.
         if self.args.daemon:
+            logger.info('Starting daemon')
             self.start_daemon()
 
-        elif self.args.direct:
-            self.work()
-
         else:
-            # start thread with work method.
-            self.run_thread = threading.Thread(target=self.work, args=())
-            self.run_thread.start()
-
-            # work locally
-            logger.info('Main thread started %s %s %s' % (os.getpid(), os.getppid(), threading.current_thread()))
-            self.cmdloop()
+            # if not self.check_pid():
+            #     return self.return_code(1)
+            self.work()
 
     def app_main(self):
         """
@@ -224,17 +213,23 @@ class Server(object):
         """
         # Parse our argument list
         parser = argparse.ArgumentParser(description='EnigmaBridge VPN Auth server')
+
         parser.add_argument('-l', '--pid-lock', dest='pidlock', type=int, default=-1,
                             help='number of attempts for pidlock acquire')
-        parser.add_argument('--debug', dest='debug', action='store_const', const=True,
+
+        parser.add_argument('--debug', dest='debug', default=False, action='store_const', const=True,
                             help='enables debug mode')
+
+        parser.add_argument('--server-debug', dest='server_debug', default=False, action='store_const', const=True,
+                            help='enables server debug mode')
+
         parser.add_argument('--verbose', dest='verbose', action='store_const', const=True,
                             help='enables verbose mode')
 
         parser.add_argument('-d', '--daemon', dest='daemon', default=False, action='store_const', const=True,
                             help='Runs in daemon mode')
 
-        self.args = parser.parse_args(args=args_src[1:])
+        self.args = parser.parse_args()
         if self.args.debug:
             coloredlogs.install(level=logging.DEBUG)
 
