@@ -7,6 +7,7 @@ import json
 import hashlib
 import base64
 import collections
+import datetime
 
 import errno
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -174,5 +175,20 @@ def decrypt(key, iv, ciphertext, tag, associated_data=None):
     # Decryption gets us the authenticated plaintext.
     # If the tag does not match an InvalidTag exception will be raised.
     return decryptor.update(ciphertext) + decryptor.finalize()
+
+
+def silent_close(c):
+    # noinspection PyBroadException
+    try:
+        if c is not None:
+            c.close()
+    except:
+        pass
+
+
+def unix_time_millis(dt):
+    if dt is None:
+        return None
+    return (dt - datetime.datetime.utcfromtimestamp(0)).total_seconds()
 
 

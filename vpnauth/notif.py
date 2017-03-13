@@ -88,10 +88,10 @@ class Notifier(object):
         url = base_url
         evt = self.args.event
 
-        if evt == 'connect':
+        if evt == 'connected':
             url += 'onConnected'
 
-        elif evt == 'disconnect':
+        elif evt == 'disconnected':
             url += 'onDisconnected'
 
         elif evt == 'up':
@@ -108,12 +108,12 @@ class Notifier(object):
         js = collections.OrderedDict()
         js['evt'] = evt
         js['time'] = time.time()
-        js['data'] = data
+        js['data'] = util.protect_payload(data, config=self.config)
 
-        payload_protected = util.protect_payload(js, config=self.config)
-        res = requests.post(url, json=payload_protected)
+        res = requests.post(url, json=js)
         res.raise_for_status()
         res_json = res.json()
+        sys.exit(0)
 
     def app_main(self):
         """

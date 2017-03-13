@@ -137,6 +137,13 @@ class MySQL(object):
         # Make sure tables are created
         Base.metadata.create_all(self.engine)
 
+    def get_session(self):
+        """
+        Returns a new session
+        :return:
+        """
+        return self.session()
+
     def execute_sql(self, sql, engine=None, ignore_fail=False):
         """
         Executes SQL query on the engine, logs the query

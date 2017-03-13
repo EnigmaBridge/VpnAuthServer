@@ -8,7 +8,7 @@ Server part of the script
 from daemon import Daemon
 from core import Core
 from config import Config
-from dbutil import MySQL
+from dbutil import MySQL, VpnUserSessions, VpnUserState
 
 import threading
 import pid
@@ -22,8 +22,10 @@ from threading import RLock as RLock
 import logging
 import coloredlogs
 import traceback
+import collections
 import BaseHTTPServer
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, abort
+import sqlalchemy as salch
 
 
 __author__ = 'dusanklinec'
@@ -132,7 +134,133 @@ class Server(object):
         """
         @self.flask.route('/api/v1.0/dump', methods=['GET'])
         def rest_dump():
-            return jsonify({'tasks': 'ok%s' % self})
+            return self.on_dump()
+
+        @self.flask.route('/api/v1.0/verify', methods=['GET'])
+        def rest_verify():
+            return jsonify({'result': False})   # TODO: implement verification
+
+        @self.flask.route('/api/v1.0/onConnected', methods=['GET', 'POST'])
+        def client_connected():
+            return self.on_client_change(request, True)
+
+        @self.flask.route('/api/v1.0/onDisconnected', methods=['GET', 'POST'])
+        def client_disconnected():
+            return self.on_client_change(request, False)
+
+        @self.flask.route('/api/v1.0/onUp', methods=['GET', 'POST'])
+        def on_up():
+            return jsonify({'result': True})  # TODO: disconnect all
+
+        @self.flask.route('/api/v1.0/onDown', methods=['GET', 'POST'])
+        def on_down():
+            return jsonify({'result': True})  # TODO: disconnect all
+
+    def on_dump(self):
+        """
+        Dump state config
+        :return:
+        """
+        s = self.db.get_session()
+        states = s.query(VpnUserState).all()
+
+        res = {}
+        for state in states:
+            obj = collections.OrderedDict()
+            obj['username'] = state.username
+            obj['cname'] = state.cname
+            obj['connected'] = state.connected
+
+            obj['date_updated'] = state.date_updated
+            obj['date_connected'] = state.date_connected
+            obj['client_local_ip'] = state.client_local_ip
+            obj['client_remote_ip'] = state.client_remote_ip
+            obj['client_remote_port'] = state.client_remote_port
+            obj['proto'] = state.proto
+            obj['bytes_sent'] = state.bytes_sent
+            obj['bytes_recv'] = state.bytes_recv
+            res[state.cname] = obj
+
+        return jsonify({'result': True, 'data': res})
+
+    def on_client_change(self, request, on_connected=True):
+        """
+        Called on client change
+        :return:
+        """
+        logger.info('Req: %s' % request)
+        if not request.json or 'data' not in request.json:
+            logger.warning('Invalid request')
+            abort(400)
+
+        data = request.json['data']
+        js = util.unprotect_payload(data, self.config)
+
+        logger.debug('Client change: %s' % js)
+
+        s = self.db.get_session()
+        try:
+            self.store_user_state(js, s, on_connected=on_connected)
+            s.commit()
+
+        except Exception as e:
+            logger.warning('[%02d] Exception in storing bulk users' % self.local_data.idx)
+            logger.warning(traceback.format_exc())
+            logger.info('[%02d] idlist: %s' % (self.local_data.idx, id_list))
+
+        finally:
+            util.silent_close(s)
+
+
+        return jsonify({'result': True})
+
+    def store_user_state(self, user, s, on_connected=True):
+        """
+        Stores username to the database.
+        :param user:
+        :param s: session
+        :return:
+        """
+        try:
+            db_user = s.query(VpnUserState).filter(VpnUserState.cname == user['cname']).one_or_none()
+            new_one = True
+
+            if db_user is None:
+                db_user = VpnUserState()
+                db_user.cname = user['cname']
+                db_user.username = user['username']
+            else:
+                new_one = False
+
+            db_user.date_updated = salch.func.now()
+            db_user.connected = 1 if on_connected else 0
+            db_user.proto = user['proto']
+            db_user.client_local_ip = user['local_ip']
+            db_user.client_remote_ip = user['remote_ip']
+            db_user.client_remote_port = user['remote_port']
+
+            if on_connected:
+                db_user.bytes_sent = 0
+                db_user.bytes_recv = 0
+                # db_user.duration = 0
+                db_user.date_connected = salch.func.now()
+
+            else:
+                db_user.bytes_sent = user['bytes_sent']
+                db_user.bytes_recv = user['bytes_recv']
+                # db_user.duration = user['duration']
+                db_user.date_connected = None
+
+            if new_one:
+                s.add(db_user)
+            else:
+                s.merge(db_user)
+            return 0
+
+        except Exception as e:
+            traceback.print_exc()
+            logger.warning('User query problem: %s' % e)
+            return 1
 
     #
     # Server
