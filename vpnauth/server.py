@@ -187,9 +187,14 @@ class Server(object):
             Core.write_configuration(Config.default_config())
             return self.return_code(1)
 
+        if self.args.server_debug and self.args.daemon:
+            # Server debug causes flask to restart the whole daemon (due to server reloading on code change)
+            logger.error('Server debug and deamon are mutually exclusive')
+            raise ValueError('Invalid start arguments')
+
         # Init
         self.init_log()
-        # self.init_db() # TODO: fix
+        self.init_db()
         self.init_rest()
 
         # Sub threads

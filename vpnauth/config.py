@@ -39,7 +39,7 @@ class Config(object):
             'config': {
                 'mysql_db': None,
                 'mysql_user': None,
-                'mysql_pass': None,
+                'mysql_password': None,
                 'enc_pass': None
             }
         })
