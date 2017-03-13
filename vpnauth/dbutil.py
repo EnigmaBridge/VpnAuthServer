@@ -144,6 +144,13 @@ class MySQL(object):
         """
         return self.session()
 
+    def get_engine(self):
+        """
+        Returns engine.
+        :return:
+        """
+        return self.engine
+
     def execute_sql(self, sql, engine=None, ignore_fail=False):
         """
         Executes SQL query on the engine, logs the query

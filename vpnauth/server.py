@@ -17,6 +17,7 @@ import os
 import sys
 import util
 import argparse
+import calendar
 from threading import Lock as Lock
 from threading import RLock as RLock
 import logging
@@ -150,11 +151,11 @@ class Server(object):
 
         @self.flask.route('/api/v1.0/onUp', methods=['GET', 'POST'])
         def on_up():
-            return jsonify({'result': True})  # TODO: disconnect all
+            return self.on_server_state_change(request, up=True)
 
         @self.flask.route('/api/v1.0/onDown', methods=['GET', 'POST'])
         def on_down():
-            return jsonify({'result': True})  # TODO: disconnect all
+            return self.on_server_state_change(request, up=False)
 
     def on_dump(self):
         """
@@ -171,8 +172,9 @@ class Server(object):
             obj['cname'] = state.cname
             obj['connected'] = state.connected
 
-            obj['date_updated'] = state.date_updated
-            obj['date_connected'] = state.date_connected
+            obj['date_updated'] = calendar.timegm(state.date_updated.timetuple())
+            obj['date_connected'] = calendar.timegm(state.date_connected.timetuple())
+
             obj['client_local_ip'] = state.client_local_ip
             obj['client_remote_ip'] = state.client_remote_ip
             obj['client_remote_port'] = state.client_remote_port
@@ -182,6 +184,27 @@ class Server(object):
             res[state.cname] = obj
 
         return jsonify({'result': True, 'data': res})
+
+    def on_server_state_change(self, request, up=True):
+        """
+        On server state change
+        :param request:
+        :param up:
+        :return:
+        """
+        s = self.db.get_session()
+        try:
+            self.disconnect_all(s)
+            s.commit()
+
+        except Exception as e:
+            logger.warning('Exception in disconnecting users %s' % e)
+            logger.warning(traceback.format_exc())
+
+        finally:
+            util.silent_close(s)
+
+        return jsonify({'result': True})
 
     def on_client_change(self, request, on_connected=True):
         """
@@ -196,29 +219,41 @@ class Server(object):
         data = request.json['data']
         js = util.unprotect_payload(data, self.config)
 
-        logger.debug('Client change: %s' % js)
-
         s = self.db.get_session()
         try:
             self.store_user_state(js, s, on_connected=on_connected)
             s.commit()
 
         except Exception as e:
-            logger.warning('[%02d] Exception in storing bulk users' % self.local_data.idx)
+            logger.warning('Exception in storing user change %s' % e)
             logger.warning(traceback.format_exc())
-            logger.info('[%02d] idlist: %s' % (self.local_data.idx, id_list))
 
         finally:
             util.silent_close(s)
 
-
         return jsonify({'result': True})
+
+    #
+    # DB Update
+    #
+
+    def disconnect_all(self, s):
+        """
+        Disconnects all users
+        :param s: session
+        :return:
+        """
+        stmt = salch.update(VpnUserState).values({
+            'connected': 0
+        })
+        self.db.get_engine().execute(stmt)
 
     def store_user_state(self, user, s, on_connected=True):
         """
         Stores username to the database.
         :param user:
         :param s: session
+        :param on_connected:
         :return:
         """
         try:
