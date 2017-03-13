@@ -30,8 +30,10 @@ Database setup
 
 State is stored in MySQL database.
 
-```
-CREATE DATABASE vpnauth CHARACTER SET utf8 COLLATE utf8_general_ci;
-GRANT ALL PRIVILEGES ON vpnauth.* TO 'vpnauth'@'localhost' IDENTIFIED BY 'vpnauth_passwd';
-FLUSH PRIVILEGES;
-```
+
+.. code:: sql
+
+    CREATE DATABASE vpnauth CHARACTER SET utf8 COLLATE utf8_general_ci;
+    GRANT ALL PRIVILEGES ON vpnauth.* TO 'vpnauth'@'localhost' IDENTIFIED BY 'vpnauth_passwd';
+    FLUSH PRIVILEGES;
+
