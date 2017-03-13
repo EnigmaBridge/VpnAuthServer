@@ -131,11 +131,12 @@ class Server(object):
     def init_rest(self):
         """
         Initializes rest server
+        TODO: auth for dump, up, down - encrypt time token.
         :return:
         """
         @self.flask.route('/api/v1.0/dump', methods=['GET'])
         def rest_dump():
-            return self.on_dump()
+            return self.on_dump(request)
 
         @self.flask.route('/api/v1.0/verify', methods=['GET'])
         def rest_verify():
@@ -157,7 +158,7 @@ class Server(object):
         def on_down():
             return self.on_server_state_change(request, up=False)
 
-    def on_dump(self):
+    def on_dump(self, request):
         """
         Dump state config
         :return:
@@ -222,6 +223,9 @@ class Server(object):
         s = self.db.get_session()
         try:
             self.store_user_state(js, s, on_connected=on_connected)
+            if not on_connected:
+                self.store_user_session(js, s)
+
             s.commit()
 
         except Exception as e:
@@ -295,6 +299,37 @@ class Server(object):
         except Exception as e:
             traceback.print_exc()
             logger.warning('User query problem: %s' % e)
+            return 1
+
+    def store_user_session(self, user, s):
+        """
+        Stores a new user session to DB
+        :param user:
+        :param s:
+        :return:
+        """
+        try:
+            db_user = VpnUserSessions()
+            db_user.cname = user['cname']
+            db_user.username = user['username']
+
+            db_user.date_disconnected = salch.func.now()
+            db_user.proto = user['proto']
+            db_user.client_local_ip = user['local_ip']
+            db_user.client_remote_ip = user['remote_ip']
+            db_user.client_remote_port = user['remote_port']
+
+            db_user.bytes_sent = user['bytes_sent']
+            db_user.bytes_recv = user['bytes_recv']
+            db_user.duration = user['duration']
+            db_user.date_connected = None
+            s.add(db_user)
+
+            return 0
+
+        except Exception as e:
+            traceback.print_exc()
+            logger.warning('User stat save problem: %s' % e)
             return 1
 
     #
