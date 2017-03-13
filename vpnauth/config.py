@@ -40,7 +40,7 @@ class Config(object):
                 'mysql_db': None,
                 'mysql_user': None,
                 'mysql_password': None,
-                'enc_pass': None
+                'enc_password': None
             }
         })
 
