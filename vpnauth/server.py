@@ -181,13 +181,71 @@ class Server(object):
             abort(403)
         return js
 
+    def vpn_user_to_obj(self, user):
+        """
+        Converts Db User state to the object.
+        Used in building REST responses.
+        :param user:
+        :return:
+        """
+        obj = collections.OrderedDict()
+        obj['cname'] = user.cname
+        obj['connected'] = user.connected
+
+        obj['date_updated'] = calendar.timegm(user.date_updated.timetuple())
+        obj['date_connected'] = calendar.timegm(user.date_connected.timetuple())
+
+        obj['client_local_ip'] = user.client_local_ip
+        obj['client_remote_ip'] = user.client_remote_ip
+        obj['client_remote_port'] = user.client_remote_port
+        obj['proto'] = user.proto
+        obj['bytes_sent'] = user.bytes_sent
+        obj['bytes_recv'] = user.bytes_recv
+        return obj
+
     def on_verify(self, request):
         """
         Verify request for ip, username.
         :param request:
         :return:
         """
-        return jsonify({'result': False})  # TODO: implement verification
+        ip = request.args.get('ip')
+        user = request.args.get('user')
+
+        if ip is None and user is None:
+            abort(400)
+        if user is not None:
+            if '%' in user:
+                abort(403)
+
+        # User is optional, can be the email only.
+        # IP, user, or both.
+        db_user = None
+        s = self.db.get_session()
+        try:
+            stmt = s.query(VpnUserState)
+            if ip is not None:
+                stmt = stmt.filter(VpnUserState.client_local_ip == ip)
+            if user is not None:
+                cname_prefix = user + '/'
+                stmt = stmt.filter(VpnUserState.cname.startswith(cname_prefix))
+
+            db_user = stmt.one_or_none()
+
+        except Exception as e:
+            logger.warning('Exception in user verification %s' % e)
+            logger.warning(traceback.format_exc())
+
+        finally:
+            util.silent_close(s)
+
+        if db_user is None:
+            return jsonify({'result': False})
+        else:
+            res = collections.OrderedDict()
+            res['result'] = True
+            res['user'] = self.vpn_user_to_obj(db_user)
+            return jsonify(res)
 
     def on_dump(self, request):
         """
@@ -200,19 +258,7 @@ class Server(object):
 
         res = {}
         for state in states:
-            obj = collections.OrderedDict()
-            obj['cname'] = state.cname
-            obj['connected'] = state.connected
-
-            obj['date_updated'] = calendar.timegm(state.date_updated.timetuple())
-            obj['date_connected'] = calendar.timegm(state.date_connected.timetuple())
-
-            obj['client_local_ip'] = state.client_local_ip
-            obj['client_remote_ip'] = state.client_remote_ip
-            obj['client_remote_port'] = state.client_remote_port
-            obj['proto'] = state.proto
-            obj['bytes_sent'] = state.bytes_sent
-            obj['bytes_recv'] = state.bytes_recv
+            obj = self.vpn_user_to_obj(state)
             res[state.cname] = obj
 
         return jsonify({'result': True, 'data': res})
