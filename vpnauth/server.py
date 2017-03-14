@@ -18,13 +18,11 @@ import sys
 import util
 import argparse
 import calendar
-from threading import Lock as Lock
 from threading import RLock as RLock
 import logging
 import coloredlogs
 import traceback
 import collections
-import BaseHTTPServer
 from flask import Flask, jsonify, request, abort
 from datetime import datetime, timedelta
 from ovpnstatus import OvpnClient, OvpnRoute, OvpnStatusParser
@@ -73,6 +71,7 @@ class Server(object):
 
         self.flask = Flask(__name__)
         self.db = None
+        self.disconnected_cache = {}  # cname -> disconnected event time
 
         self.status_thread = None
         self.status_thread_lock = RLock()
@@ -226,6 +225,11 @@ class Server(object):
 
         s = self.db.get_session()
         try:
+            if on_connected:
+                self.disconnected_cache[js['cname']] = 0
+            else:
+                self.disconnected_cache[js['cname']] = time.time()
+
             self.store_user_state(js, s, on_connected=on_connected)
             if not on_connected:
                 self.store_user_session(js, s)
@@ -306,6 +310,7 @@ class Server(object):
         """
         Stores user vpn auth state from vpn status file.
         User is always considered connected, otherwise it won't be in the status file.
+
         :param client:
         :param route:
         :return:
@@ -432,6 +437,11 @@ class Server(object):
         for cname in results.clients:
             cl = results.clients[cname]
             rt = results.routes[cname] if cname in results.routes else None
+
+            # If user was recently disconnected, to not update with connected
+            if cname in self.disconnected_cache:
+                if time.time() - self.disconnected_cache[cname] < 60:
+                    continue
 
             s = self.db.get_session()
             try:
