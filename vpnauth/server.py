@@ -213,7 +213,6 @@ class Server(object):
         Called on client change
         :return:
         """
-        logger.info('Req: %s' % request)
         if not request.json or 'data' not in request.json:
             logger.warning('Invalid request')
             abort(400)
