@@ -27,6 +27,7 @@ import collections
 import BaseHTTPServer
 from flask import Flask, jsonify, request, abort
 from datetime import datetime, timedelta
+from ovpnstatus import OvpnClient, OvpnRoute, OvpnStatusParser
 import sqlalchemy as salch
 
 
@@ -59,6 +60,7 @@ class Server(object):
         self.args = None
         self.config = None
 
+        self.status_file = '/etc/openvpn/openvpn-status.log'
         self.logdir = '/var/log/enigma-vpnauth'
         self.piddir = '/var/run'
 
@@ -71,8 +73,11 @@ class Server(object):
 
         self.flask = Flask(__name__)
         self.db = None
-        self.queue_thread = None
-        self.queue_lock = RLock()
+
+        self.status_thread = None
+        self.status_thread_lock = RLock()
+        self.status_last_check = 0
+        self.status_check_time = 5
 
     def check_pid(self, retry=True):
         """
@@ -297,6 +302,55 @@ class Server(object):
             logger.warning('User query problem: %s' % e)
             return 1
 
+    def store_user_from_file(self, client, route, s):
+        """
+        Stores user vpn auth state from vpn status file.
+        User is always considered connected, otherwise it won't be in the status file.
+        :param client:
+        :param route:
+        :return:
+        """
+        try:
+            db_user = s.query(VpnUserState).filter(VpnUserState.cname == client.cname).one_or_none()
+            new_one = True
+
+            if db_user is None:
+                db_user = VpnUserState()
+                db_user.cname = client.cname
+                db_user.date_connected = salch.func.now()
+
+            else:
+                new_one = False
+                if db_user.connected == 0:
+                    db_user.date_connected = salch.func.now()
+
+            db_user.date_updated = salch.func.now()
+            db_user.connected = 1
+            db_user.bytes_sent = client.bytes_sent
+            db_user.bytes_recv = client.bytes_recv
+
+            if route is not None:
+                db_user.client_local_ip = route.local_addr
+
+            try:
+                addr, port = client.addr.rsplit(':', 1)
+                db_user.client_remote_ip = addr
+                db_user.client_remote_port = port
+
+            except Exception as e:
+                logger.info('Addr parse fail [%s]: %s' % (client.addr, e))
+
+            if new_one:
+                s.add(db_user)
+            else:
+                s.merge(db_user)
+            return 0
+
+        except Exception as e:
+            traceback.print_exc()
+            logger.warning('User query problem: %s' % e)
+            return 1
+
     def store_user_session(self, user, s):
         """
         Stores a new user session to DB
@@ -331,6 +385,67 @@ class Server(object):
             return 1
 
     #
+    # Status monitoring
+    #
+    def status_main(self):
+        """
+        Status file monitoring
+        :return:
+        """
+        logger.info('Status thread started %s %s %s' % (os.getpid(), os.getppid(), threading.current_thread()))
+        try:
+            while not self.stop_event.is_set():
+                try:
+                    time.sleep(0.2)
+                    cur_time = time.time()
+                    if self.status_last_check + self.status_check_time > cur_time:
+                        continue
+
+                    self.update_state_from_file()
+                    self.status_last_check = cur_time
+
+                except Exception as e:
+                    logger.error('Exception in status processing: %s' % e)
+                    logger.debug(traceback.format_exc())
+
+        except Exception as e:
+            logger.error('Exception: %s' % e)
+            logger.debug(traceback.format_exc())
+
+        logger.info('Status loop terminated')
+
+    def load_status(self):
+        """
+        Loads status file
+        :return: parser
+        """
+        parser = OvpnStatusParser(status_file=self.status_file)
+        parser.process()
+        return parser
+
+    def update_state_from_file(self):
+        """
+        Updates auth state from state file.
+        :return:
+        """
+        results = self.load_status()
+        for cname in results.clients:
+            cl = results.clients[cname]
+            rt = results.routes[cname] if cname in results.routes else None
+
+            s = self.db.get_session()
+            try:
+                self.store_user_from_file(client=cl, route=rt, s=s)
+                s.commit()
+
+            except Exception as e:
+                logger.warning('Exception in storing user state %s' % e)
+                logger.warning(traceback.format_exc())
+
+            finally:
+                util.silent_close(s)
+
+    #
     # Server
     #
 
@@ -355,6 +470,14 @@ class Server(object):
             raise RuntimeError('Not running with the Werkzeug Server')
         func()
 
+    def terminating(self):
+        """
+        Set state to terminating
+        :return:
+        """
+        self.running = False
+        self.stop_event.set()
+
     def work(self):
         """
         Main work method for the server - accepting incoming connections.
@@ -368,6 +491,8 @@ class Server(object):
         except Exception as e:
             logger.error('Exception: %s' % e)
             logger.error(traceback.format_exc())
+
+        self.terminating()
         logger.info('Work loop terminated')
 
     def work_loop(self):
@@ -394,8 +519,9 @@ class Server(object):
         self.init_rest()
 
         # Sub threads
-        # self.queue_thread = threading.Thread(target=self.follow_main, args=())
-        # self.follow_thread.start()
+        self.status_thread = threading.Thread(target=self.status_main, args=())
+        self.status_thread.setDaemon(True)
+        self.status_thread.start()
 
         # Daemon vs. run mode.
         if self.args.daemon:
