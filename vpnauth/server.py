@@ -249,7 +249,7 @@ class Server(object):
 
             obj['day'] = {
                 'sent': stats_base[user][0] + map_day[user][0],
-                'recv': stats_base[user][1] + map_day[user][0],
+                'recv': stats_base[user][1] + map_day[user][1],
             }
 
             obj['last7d'] = {
