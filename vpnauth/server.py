@@ -26,6 +26,7 @@ import traceback
 import collections
 import BaseHTTPServer
 from flask import Flask, jsonify, request, abort
+from datetime import datetime, timedelta
 import sqlalchemy as salch
 
 
@@ -313,16 +314,19 @@ class Server(object):
             db_user.cname = user['cname']
             db_user.username = user['username']
 
-            db_user.date_disconnected = salch.func.now()
+            duration = int(user['duration'])
+            disconnected = datetime.now()
+            db_user.date_disconnected = disconnected
+            db_user.date_connected = disconnected - timedelta(seconds=duration)
+
             db_user.proto = user['proto']
             db_user.client_local_ip = user['local_ip']
             db_user.client_remote_ip = user['remote_ip']
             db_user.client_remote_port = user['remote_port']
 
-            db_user.bytes_sent = user['bytes_sent']
-            db_user.bytes_recv = user['bytes_recv']
-            db_user.duration = user['duration']
-            db_user.date_connected = None
+            db_user.bytes_sent = int(user['bytes_sent'])
+            db_user.bytes_recv = int(user['bytes_recv'])
+            db_user.duration = duration
             s.add(db_user)
 
             return 0
