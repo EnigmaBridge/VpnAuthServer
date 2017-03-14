@@ -317,6 +317,113 @@ class Server(object):
     # DB Update
     #
 
+    def session_from_state(self, state):
+        """
+        Converts state view to the session record
+        :param VpnUserState state:
+        :return:
+        """
+        db_user = VpnUserSessions()
+        db_user.cname = state.cname
+
+        connected_time = calendar.timegm(state.date_connected.timetuple())
+        duration = time.time() - connected_time
+
+        disconnected = datetime.now()
+        db_user.date_disconnected = disconnected
+        db_user.date_connected = disconnected - timedelta(seconds=duration)
+
+        db_user.proto = state.proto
+        db_user.client_local_ip = state.client_local_ip
+        db_user.client_remote_ip = state.client_remote_ip
+        db_user.client_remote_port = state.client_remote_port
+
+        db_user.bytes_sent = state.bytes_sent
+        db_user.bytes_recv = state.bytes_recv
+        db_user.duration = duration
+        return db_user
+
+    def is_the_same_connection(self, state_db, cl):
+        """
+        Returns true if state representation of the user connection is the same as mentioned in the status file.
+        :param VpnUserState state_db: VPN user state - DB
+        :param OvpnClient cl: client info from VPN state file
+        :return:
+        """
+        # IP check, should be the same remote socket
+        if cl.addr != (state_db.client_remote_ip + ':' + state_db.client_remote_port):
+            return False
+
+        # Bytes stats check. Status file has to be greater or equal
+        if state_db.bytes_sent > cl.bytes_sent or state_db.bytes_recv > cl.bytes_recv:
+            return False
+
+        # Check connection time, tolerance 5 minutes.
+        connected_db_utc = calendar.timegm(state_db.date_connected.timetuple())
+        connected_stat_utc = util.unix_time(cl.connected_since)
+        time_diff = abs(connected_db_utc - connected_stat_utc)
+        if time_diff > 60*5:
+            return False
+
+        return True
+
+    def sync_with_status(self):
+        """
+        Synchronizes all users with the status file. Disconnects users not mentioned in the status file.
+        Executed on auth server start
+        :return:
+        """
+        # Load status file. If user has same remote socket and times, do not store new sessions.
+        status_file = self.load_status()
+
+        s = self.db.get_session()
+        try:
+            states = s.query(VpnUserState).all()
+            for state in states:
+                if state.connected != 1:
+                    continue
+
+                # check connected user w.r.t. status file.
+                # If status file signalizes user is still connected and he has the same remote
+                # socket (ip:port) it is highly probable it is exactly same connection as
+                # remote port usually changes randomly with each connection.
+                # To improve this detection there are further conditions: bytes sent, received should be larger or
+                # equal to those in status file.
+                # Also connected_from time in status file should be maximally 60 seconds longer.
+                still_same_connection = False
+                cl = None
+
+                cname = state.cname
+                if cname in status_file.clients:
+                    cl = status_file.clients[cname]
+                    still_same_connection = self.is_the_same_connection(state, cl)
+
+                if not still_same_connection:
+                    session = self.session_from_state(state)
+                    session.record_type = 1  # Mark we created this record artificially
+                    s.add(session)
+
+                state.date_updated = salch.func.now()
+                if cl is None:
+                    state.connected = 0
+                    state.bytes_recv = 0
+                    state.bytes_sent = 0
+                    state.date_connected = None
+                else:
+                    state.connected = 1
+                    state.bytes_recv = cl.bytes_recv
+                    state.bytes_sent = cl.bytes_sent
+                    state.date_connected = cl.connected_since
+
+            s.commit()
+
+        except Exception as e:
+            logger.warning('Exception in disconnecting users %s' % e)
+            logger.warning(traceback.format_exc())
+
+        finally:
+            util.silent_close(s)
+
     def disconnect_all(self, s):
         """
         Disconnects all users
@@ -507,7 +614,7 @@ class Server(object):
             cl = results.clients[cname]
             rt = results.routes[cname] if cname in results.routes else None
 
-            # If user was recently disconnected, to not update with connected
+            # If user was recently disconnected, to not update with connected obsolete state
             if cname in self.disconnected_cache:
                 if time.time() - self.disconnected_cache[cname] < 60:
                     continue
@@ -596,6 +703,9 @@ class Server(object):
         self.init_log()
         self.init_db()
         self.init_rest()
+
+        # Disconnect all users
+        self.sync_with_status()
 
         # Sub threads
         self.status_thread = threading.Thread(target=self.status_main, args=())

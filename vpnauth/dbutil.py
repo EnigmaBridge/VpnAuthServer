@@ -35,7 +35,7 @@ class VpnUserState(Base):
     connected = Column(Integer, nullable=False, default=0)
 
     date_updated = Column(DateTime, default=func.now())
-    date_connected = Column(DateTime, default=func.now())
+    date_connected = Column(DateTime)
     client_local_ip = Column(String(128), nullable=True)
     client_remote_ip = Column(String(128), nullable=True)
     client_remote_port = Column(Integer, nullable=True)
@@ -64,6 +64,8 @@ class VpnUserSessions(Base):
     duration = Column(BigInteger, nullable=True)
     bytes_sent = Column(BigInteger, nullable=True)
     bytes_recv = Column(BigInteger, nullable=True)
+
+    record_type = Column(Integer, nullable=False, default=0)
 
 
 class MySQL(object):

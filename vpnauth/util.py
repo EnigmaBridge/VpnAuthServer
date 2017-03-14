@@ -186,7 +186,7 @@ def silent_close(c):
         pass
 
 
-def unix_time_millis(dt):
+def unix_time(dt):
     if dt is None:
         return None
     return (dt - datetime.datetime.utcfromtimestamp(0)).total_seconds()
