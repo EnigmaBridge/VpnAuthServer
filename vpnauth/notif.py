@@ -110,9 +110,15 @@ class Notifier(object):
         js['time'] = time.time()
         js['data'] = util.protect_payload(data, config=self.config)
 
-        res = requests.post(url, json=js)
-        res.raise_for_status()
-        res_json = res.json()
+        try:
+            res = requests.post(url, json=js)
+            res.raise_for_status()
+            res_json = res.json()
+
+        except Exception as e:
+            logger.info('Exception in calling %s : %s' % (url, e))
+            logger.debug(traceback.format_exc())
+
         sys.exit(0)
 
     def app_main(self):
