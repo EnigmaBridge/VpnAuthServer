@@ -31,8 +31,6 @@ class VpnUserState(Base):
     """
     __tablename__ = 'vpn_user_state'
     id = Column(BigInteger, primary_key=True)
-
-    username = Column(String(255), nullable=False)
     cname = Column(String(255), nullable=False)
     connected = Column(Integer, nullable=False, default=0)
 
@@ -53,8 +51,6 @@ class VpnUserSessions(Base):
     """
     __tablename__ = 'vpn_user_sessions'
     id = Column(BigInteger, primary_key=True)
-
-    username = Column(String(255), nullable=False)
     cname = Column(String(255), nullable=False)
 
     date_connected = Column(DateTime, default=func.now())

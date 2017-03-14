@@ -170,7 +170,6 @@ class Server(object):
         res = {}
         for state in states:
             obj = collections.OrderedDict()
-            obj['username'] = state.username
             obj['cname'] = state.cname
             obj['connected'] = state.connected
 
@@ -267,7 +266,6 @@ class Server(object):
             if db_user is None:
                 db_user = VpnUserState()
                 db_user.cname = user['cname']
-                db_user.username = user['username']
             else:
                 new_one = False
 
@@ -281,13 +279,11 @@ class Server(object):
             if on_connected:
                 db_user.bytes_sent = 0
                 db_user.bytes_recv = 0
-                # db_user.duration = 0
                 db_user.date_connected = salch.func.now()
 
             else:
                 db_user.bytes_sent = user['bytes_sent']
                 db_user.bytes_recv = user['bytes_recv']
-                # db_user.duration = user['duration']
                 db_user.date_connected = None
 
             if new_one:
@@ -311,7 +307,6 @@ class Server(object):
         try:
             db_user = VpnUserSessions()
             db_user.cname = user['cname']
-            db_user.username = user['username']
 
             duration = int(user['duration'])
             disconnected = datetime.now()
