@@ -163,11 +163,30 @@ class Server(object):
         def on_down():
             return self.on_server_state_change(request, up=False)
 
+    def process_payload(self, request):
+        """
+        Decrypts payload, fails request in case of a problem
+        :param request:
+        :return:
+        """
+        if not request.json or 'data' not in request.json:
+            logger.warning('Invalid request')
+            abort(400)
+
+        data = request.json['data']
+        js = util.unprotect_payload(data, self.config)
+
+        if time.time() - js['time'] > 60:
+            logger.warning('Client change update too old')
+            abort(403)
+        return js
+
     def on_dump(self, request):
         """
         Dump state config
         :return:
         """
+        self.process_payload(request)
         s = self.db.get_session()
         states = s.query(VpnUserState).all()
 
@@ -197,6 +216,7 @@ class Server(object):
         :param up:
         :return:
         """
+        self.process_payload(request)
         s = self.db.get_session()
         try:
             self.disconnect_all(s)
@@ -216,13 +236,7 @@ class Server(object):
         Called on client change
         :return:
         """
-        if not request.json or 'data' not in request.json:
-            logger.warning('Invalid request')
-            abort(400)
-
-        data = request.json['data']
-        js = util.unprotect_payload(data, self.config)
-
+        js = self.process_payload(request)
         s = self.db.get_session()
         try:
             if on_connected:

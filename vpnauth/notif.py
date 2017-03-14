@@ -55,6 +55,8 @@ class Notifier(object):
                 payload[key] = os.environ[env_key]
 
         payload = collections.OrderedDict()
+        payload['time'] = time.time()
+
         add_payload(payload, 'dev_type')
         add_payload(payload, 'dev')
         add_payload(payload, 'cname', 'common_name')
