@@ -143,9 +143,9 @@ class Server(object):
         def rest_dump():
             return self.on_dump(request)
 
-        @self.flask.route('/api/v1.0/verify', methods=['GET'])
+        @self.flask.route('/api/v1.0/verify', methods=['GET', 'POST'])
         def rest_verify():
-            return jsonify({'result': False})   # TODO: implement verification
+            return self.on_verify(request)
 
         @self.flask.route('/api/v1.0/onConnected', methods=['GET', 'POST'])
         def client_connected():
@@ -180,6 +180,14 @@ class Server(object):
             logger.warning('Client change update too old')
             abort(403)
         return js
+
+    def on_verify(self, request):
+        """
+        Verify request for ip, username.
+        :param request:
+        :return:
+        """
+        return jsonify({'result': False})  # TODO: implement verification
 
     def on_dump(self, request):
         """
@@ -406,6 +414,7 @@ class Server(object):
     #
     # Status monitoring
     #
+
     def status_main(self):
         """
         Status file monitoring
