@@ -351,7 +351,7 @@ class Server(object):
         :return:
         """
         # IP check, should be the same remote socket
-        if cl.addr != (state_db.client_remote_ip + ':' + state_db.client_remote_port):
+        if cl.addr != ('%s:%s' % (state_db.client_remote_ip, state_db.client_remote_port)):
             return False
 
         # Bytes stats check. Status file has to be greater or equal
