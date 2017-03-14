@@ -143,6 +143,10 @@ class Server(object):
         def rest_dump():
             return self.on_dump(request)
 
+        @self.flask.route('/api/v1.0/stats', methods=['GET'])
+        def rest_stats():
+            return self.on_stats(request)
+
         @self.flask.route('/api/v1.0/verify', methods=['GET', 'POST'])
         def rest_verify():
             return self.on_verify(request)
@@ -203,6 +207,65 @@ class Server(object):
         obj['bytes_recv'] = user.bytes_recv
         return obj
 
+    def on_stats(self, request):
+        """
+        Returns stats for daily, monthly use
+        :return:
+        """
+        s = self.db.get_session()
+
+        # Fetch current stats of connected clients, will be added to aggregate stats
+        connected_clients = s.query(VpnUserState).filter(VpnUserState.connected == 1).all()
+
+        # Aggregate calls on sessions
+        current_time = datetime.utcnow()
+        month_start = current_time - timedelta(days=current_time.day, hours=current_time.hour,
+                                               minutes=current_time.minute, seconds=current_time.second)
+        week_ago = current_time - timedelta(days=7)
+        day_start = current_time - timedelta(hours=current_time.hour, minutes=current_time.minute,
+                                             seconds=current_time.second)
+
+        last_month = self.aggregated_sessions(s, month_start).all()
+        last_week = self.aggregated_sessions(s, week_ago).all()
+        last_day = self.aggregated_sessions(s, day_start).all()
+
+        users = set([x.cname for x in connected_clients] + [x.cname for x in last_month])
+        users = sorted(list(users))
+
+        stats_base = {}  # increment for connected=1
+        for user in users:
+            stats_base[user] = 0, 0
+        for cl in connected_clients:
+            stats_base[cl.cname] = cl.bytes_sent, cl.bytes_recv
+
+        map_day, map_week, map_month = self.aggregation_maps(users, last_day, last_week, last_month)
+        res = collections.OrderedDict()
+        for user in users:
+            obj = collections.OrderedDict()
+            obj['cur'] = {
+                'sent': stats_base[user][0],
+                'recv': stats_base[user][1],
+            }
+
+            obj['day'] = {
+                'sent': stats_base[user][0] + map_day[user][0],
+                'recv': stats_base[user][1] + map_day[user][0],
+            }
+
+            obj['last7d'] = {
+                'sent': stats_base[user][0] + map_week[user][0],
+                'recv': stats_base[user][1] + map_week[user][1],
+            }
+
+            obj['month'] = {
+                'sent': stats_base[user][0] + map_month[user][0],
+                'recv': stats_base[user][1] + map_month[user][1],
+            }
+
+            res[user] = obj
+        util.silent_close(s)
+        return jsonify({'result': True, 'data': res})
+
     def on_verify(self, request):
         """
         Verify request for ip, username.
@@ -261,6 +324,7 @@ class Server(object):
             obj = self.vpn_user_to_obj(state)
             res[state.cname] = obj
 
+        util.silent_close(s)
         return jsonify({'result': True, 'data': res})
 
     def on_server_state_change(self, request, up=True):
@@ -423,6 +487,41 @@ class Server(object):
 
         finally:
             util.silent_close(s)
+
+    def aggregated_sessions(self, s, delta):
+        """
+        Builds aggregation query for sessions.
+        :param delta:
+        :return:
+        """
+        qry = s.query(
+            VpnUserSessions.cname,
+            salch.func.sum(VpnUserSessions.bytes_sent).label("sum_bytes_sent"),
+            salch.func.sum(VpnUserSessions.bytes_recv).label("sum_bytes_recv"))
+
+        qry = qry.filter(salch.or_(
+            VpnUserSessions.date_connected >= delta,
+            VpnUserSessions.date_disconnected >= delta))
+
+        qry = qry.group_by(VpnUserSessions.cname)
+        return qry
+
+    def aggregation_maps(self, users, *args):
+        """
+        Creates maps cname -> (sent, recv)
+        :param users:
+        :param args:
+        :return:
+        """
+        res = [{}] * len(args)
+        for idx, aggregation in enumerate(args):
+            aggmap = {x.cname: x for x in aggregation}
+            for user in users:
+                if user not in aggmap:
+                    res[idx][user] = 0, 0
+                else:
+                    res[idx][user] = aggmap[user].sum_bytes_sent, aggmap[user].sum_bytes_recv
+        return res
 
     def disconnect_all(self, s):
         """
