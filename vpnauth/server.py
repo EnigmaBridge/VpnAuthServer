@@ -370,6 +370,8 @@ class Server(object):
             obj = collections.OrderedDict()
             if add_meta and user in connected_map:
                 user_db = connected_map[user]
+                obj['cname'] = user_db.cname
+                obj['email'] = util.get_user_from_cname(user_db.cname)
                 obj['local_ip'] = user_db.client_local_ip
                 obj['remote_ip'] = user_db.client_remote_ip
                 obj['remote_port'] = int(user_db.client_remote_port)

@@ -257,3 +257,13 @@ def flush_file(data, filepath):
     shutil.move(tmp_filepath, abs_filepath)
 
 
+def get_user_from_cname(cname):
+    """
+    Get user name from the cname.
+    :param cname:
+    :return:
+    """
+    if cname is None:
+        return None
+    return cname.split('/', 1)[0]
+
