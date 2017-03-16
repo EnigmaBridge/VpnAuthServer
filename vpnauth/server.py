@@ -759,7 +759,7 @@ class Server(object):
             if self.args.dump_stats_file is None:
                 return
 
-            res = self.build_stats()
+            res = self.build_stats(add_meta=True)
             util.flush_file(json.dumps(res, indent=2), filepath=self.args.dump_stats_file)
 
         except Exception as e:
