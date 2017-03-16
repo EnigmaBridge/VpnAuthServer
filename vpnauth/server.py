@@ -16,6 +16,7 @@ import time
 import os
 import sys
 import util
+import json
 import argparse
 import calendar
 from threading import RLock as RLock
@@ -212,58 +213,7 @@ class Server(object):
         Returns stats for daily, monthly use
         :return:
         """
-        s = self.db.get_session()
-
-        # Fetch current stats of connected clients, will be added to aggregate stats
-        connected_clients = s.query(VpnUserState).filter(VpnUserState.connected == 1).all()
-
-        # Aggregate calls on sessions
-        current_time = datetime.utcnow()
-        month_start = current_time - timedelta(days=current_time.day, hours=current_time.hour,
-                                               minutes=current_time.minute, seconds=current_time.second)
-        week_ago = current_time - timedelta(days=7)
-        day_start = current_time - timedelta(hours=current_time.hour, minutes=current_time.minute,
-                                             seconds=current_time.second)
-
-        last_month = self.aggregated_sessions(s, month_start).all()
-        last_week = self.aggregated_sessions(s, week_ago).all()
-        last_day = self.aggregated_sessions(s, day_start).all()
-
-        users = set([x.cname for x in connected_clients] + [x.cname for x in last_month])
-        users = sorted(list(users))
-
-        stats_base = {}  # increment for connected=1
-        for user in users:
-            stats_base[user] = 0, 0
-        for cl in connected_clients:
-            stats_base[cl.cname] = cl.bytes_sent, cl.bytes_recv
-
-        map_day, map_week, map_month = self.aggregation_maps(users, last_day, last_week, last_month)
-        res = collections.OrderedDict()
-        for user in users:
-            obj = collections.OrderedDict()
-            obj['cur'] = {
-                'sent': stats_base[user][0],
-                'recv': stats_base[user][1],
-            }
-
-            obj['day'] = {
-                'sent': stats_base[user][0] + map_day[user][0],
-                'recv': stats_base[user][1] + map_day[user][1],
-            }
-
-            obj['last7d'] = {
-                'sent': stats_base[user][0] + map_week[user][0],
-                'recv': stats_base[user][1] + map_week[user][1],
-            }
-
-            obj['month'] = {
-                'sent': stats_base[user][0] + map_month[user][0],
-                'recv': stats_base[user][1] + map_month[user][1],
-            }
-
-            res[user] = obj
-        util.silent_close(s)
+        res = self.build_stats()
         return jsonify({'result': True, 'data': res})
 
     def on_verify(self, request):
@@ -380,6 +330,74 @@ class Server(object):
     #
     # DB Update
     #
+
+    def build_stats(self, add_meta=False):
+        """
+        Builds stats object
+        :return:
+        """
+        s = self.db.get_session()
+
+        # Fetch current stats of connected clients, will be added to aggregate stats
+        connected_clients = s.query(VpnUserState).all()
+
+        # Aggregate calls on sessions
+        current_time = datetime.utcnow()
+        month_start = current_time - timedelta(days=current_time.day, hours=current_time.hour,
+                                               minutes=current_time.minute, seconds=current_time.second)
+        week_ago = current_time - timedelta(days=7)
+        day_start = current_time - timedelta(hours=current_time.hour, minutes=current_time.minute,
+                                             seconds=current_time.second)
+
+        last_month = self.aggregated_sessions(s, month_start).all()
+        last_week = self.aggregated_sessions(s, week_ago).all()
+        last_day = self.aggregated_sessions(s, day_start).all()
+
+        users = set([x.cname for x in connected_clients] + [x.cname for x in last_month])
+        users = sorted(list(users))
+
+        stats_base = {}  # increment for connected=1
+        for user in users:
+            stats_base[user] = 0, 0
+        for cl in connected_clients:
+            if cl.connected == 1:
+                stats_base[cl.cname] = cl.bytes_sent, cl.bytes_recv
+
+        map_day, map_week, map_month = self.aggregation_maps(users, last_day, last_week, last_month)
+        res = collections.OrderedDict()
+        for user in users:
+            obj = collections.OrderedDict()
+            if add_meta:
+                obj['local_ip'] = user.client_local_ip
+                obj['remote_ip'] = user.client_remote_ip
+                obj['remote_port'] = user.client_remote_port
+                obj['connected'] = user.connected
+                obj['date_updated'] = calendar.timegm(user.date_updated.timetuple())
+                obj['date_connected'] = calendar.timegm(user.date_connected.timetuple())
+
+            obj['cur'] = {
+                'sent': stats_base[user][0],
+                'recv': stats_base[user][1],
+            }
+
+            obj['day'] = {
+                'sent': stats_base[user][0] + map_day[user][0],
+                'recv': stats_base[user][1] + map_day[user][1],
+            }
+
+            obj['last7d'] = {
+                'sent': stats_base[user][0] + map_week[user][0],
+                'recv': stats_base[user][1] + map_week[user][1],
+            }
+
+            obj['month'] = {
+                'sent': stats_base[user][0] + map_month[user][0],
+                'recv': stats_base[user][1] + map_month[user][1],
+            }
+
+            res[user] = obj
+        util.silent_close(s)
+        return res
 
     def session_from_state(self, state):
         """
@@ -684,6 +702,8 @@ class Server(object):
                     self.update_state_from_file()
                     self.status_last_check = cur_time
 
+                    self.status_dump_json()
+
                 except Exception as e:
                     logger.error('Exception in status processing: %s' % e)
                     logger.debug(traceback.format_exc())
@@ -729,6 +749,21 @@ class Server(object):
 
             finally:
                 util.silent_close(s)
+
+    def status_dump_json(self):
+        """
+        Dumps stats with file consumption to json
+        :return:
+        """
+        try:
+            if self.args.dump_stats_file is None:
+                return
+
+            res = self.build_stats()
+            util.flush_file(json.dumps(res, indent=2), filepath=self.args.dump_stats_file)
+
+        except Exception as e:
+            logger.error('Exception in file generation: %s' % e)
 
     #
     # Server
@@ -843,6 +878,9 @@ class Server(object):
 
         parser.add_argument('-d', '--daemon', dest='daemon', default=False, action='store_const', const=True,
                             help='Runs in daemon mode')
+
+        parser.add_argument('--dump-stats', dest='dump_stats_file', default=None,
+                            help='Dumping stats to a file')
 
         self.args = parser.parse_args()
         if self.args.debug:
