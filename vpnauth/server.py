@@ -766,7 +766,10 @@ class Server(object):
                 return
 
             res = self.build_stats(add_meta=True)
-            util.flush_file(json.dumps(res, indent=2), filepath=self.args.dump_stats_file)
+            js = collections.OrderedDict()
+            js['generated'] = time.time()
+            js['users'] = res
+            util.flush_file(json.dumps(js, indent=2), filepath=self.args.dump_stats_file)
 
         except Exception as e:
             logger.error('Exception in file generation: %s' % e)
