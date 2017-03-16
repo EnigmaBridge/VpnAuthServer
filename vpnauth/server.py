@@ -340,6 +340,7 @@ class Server(object):
 
         # Fetch current stats of connected clients, will be added to aggregate stats
         connected_clients = s.query(VpnUserState).all()
+        connected_map = {x.cname: x for x in connected_clients}
 
         # Aggregate calls on sessions
         current_time = datetime.utcnow()
@@ -367,32 +368,35 @@ class Server(object):
         res = collections.OrderedDict()
         for user in users:
             obj = collections.OrderedDict()
-            if add_meta:
-                obj['local_ip'] = user.client_local_ip
-                obj['remote_ip'] = user.client_remote_ip
-                obj['remote_port'] = user.client_remote_port
-                obj['connected'] = user.connected
-                obj['date_updated'] = calendar.timegm(user.date_updated.timetuple())
-                obj['date_connected'] = calendar.timegm(user.date_connected.timetuple())
+            if add_meta and user in connected_map:
+                user_db = connected_map[user]
+                obj['local_ip'] = user_db.client_local_ip
+                obj['remote_ip'] = user_db.client_remote_ip
+                obj['remote_port'] = int(user_db.client_remote_port)
+                obj['connected'] = int(user_db.connected)
+                obj['date_updated'] = calendar.timegm(user_db.date_updated.timetuple()) \
+                    if user_db.date_updated is not None else None
+                obj['date_connected'] = calendar.timegm(user_db.date_connected.timetuple()) \
+                    if user_db.date_connected is not None else None
 
             obj['cur'] = {
-                'sent': stats_base[user][0],
-                'recv': stats_base[user][1],
+                'sent': int(stats_base[user][0]),
+                'recv': int(stats_base[user][1]),
             }
 
             obj['day'] = {
-                'sent': stats_base[user][0] + map_day[user][0],
-                'recv': stats_base[user][1] + map_day[user][1],
+                'sent': int(stats_base[user][0] + map_day[user][0]),
+                'recv': int(stats_base[user][1] + map_day[user][1]),
             }
 
             obj['last7d'] = {
-                'sent': stats_base[user][0] + map_week[user][0],
-                'recv': stats_base[user][1] + map_week[user][1],
+                'sent': int(stats_base[user][0] + map_week[user][0]),
+                'recv': int(stats_base[user][1] + map_week[user][1]),
             }
 
             obj['month'] = {
-                'sent': stats_base[user][0] + map_month[user][0],
-                'recv': stats_base[user][1] + map_month[user][1],
+                'sent': int(stats_base[user][0] + map_month[user][0]),
+                'recv': int(stats_base[user][1] + map_month[user][1]),
             }
 
             res[user] = obj
@@ -764,6 +768,7 @@ class Server(object):
 
         except Exception as e:
             logger.error('Exception in file generation: %s' % e)
+            logger.debug(traceback.format_exc())
 
     #
     # Server
