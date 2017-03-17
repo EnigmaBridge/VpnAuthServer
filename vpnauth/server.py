@@ -307,6 +307,10 @@ class Server(object):
         js = self.process_payload(request)
         s = self.db.get_session()
         try:
+            if not self.is_valid_cname(js['cname']):
+                logger.warning('Invalid cname: %s' % js['cname'])
+                return jsonify({'result': False})
+
             if on_connected:
                 self.disconnected_cache[js['cname']] = 0
             else:
@@ -454,6 +458,14 @@ class Server(object):
             return False
 
         return True
+
+    def is_valid_cname(self, cname):
+        """
+        Returns false if cname is invalid
+        :param cname:
+        :return:
+        """
+        return cname is not None and cname != '' and len(cname) > 0 and cname.lower() != 'undef'
 
     def sync_with_status(self):
         """
@@ -737,6 +749,10 @@ class Server(object):
         """
         results = self.load_status()
         for cname in results.clients:
+            if not self.is_valid_cname(cname):
+                logger.warning('state file - CNAME user invalid: %s' % cname)
+                continue
+
             cl = results.clients[cname]
             rt = results.routes[cname] if cname in results.routes else None
 
