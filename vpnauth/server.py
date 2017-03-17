@@ -537,8 +537,9 @@ class Server(object):
         :param args:
         :return:
         """
-        res = [{}] * len(args)
+        res = []
         for idx, aggregation in enumerate(args):
+            res.append({})
             aggmap = {x.cname: x for x in aggregation}
             for user in users:
                 if user not in aggmap:
