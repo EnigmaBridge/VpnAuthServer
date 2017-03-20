@@ -78,13 +78,20 @@ class Notifier(object):
         Main entry
         :return:
         """
-        self.config = Core.read_configuration()
-        if self.config is None or not self.config.has_nonempty_config():
-            sys.stderr.write('Configuration is empty: %s\nCreating default one... (fill in access credentials)\n'
-                             % Core.get_config_file_path())
+        if self.args.ebstall:
+            self.config = Config.from_file('/etc/enigma/config.json')
+            self.config.mysql_db = self.config.vpnauth_db
+            self.config.mysql_password = self.config.vpnauth_password
+            self.config.mysql_user = 'vpnauth'
 
-            Core.write_configuration(Config.default_config())
-            return self.return_code(1)
+        else:
+            self.config = Core.read_configuration()
+            if self.config is None or not self.config.has_nonempty_config():
+                sys.stderr.write('Configuration is empty: %s\nCreating default one... (fill in access credentials)\n'
+                                 % Core.get_config_file_path())
+
+                Core.write_configuration(Config.default_config())
+                return self.return_code(1)
 
         base_url = 'http://127.0.0.1:%d/api/v1.0/' % server.Server.HTTP_PORT
         url = base_url
@@ -139,6 +146,9 @@ class Notifier(object):
 
         parser.add_argument('--event', dest='event',
                             help='notify event')
+
+        parser.add_argument('--ebstall', dest='ebstall', default=False, action='store_const', const=True,
+                            help='ebstall compatible mode - uses enigma configuration')
 
         parser.add_argument('args', nargs=argparse.ZERO_OR_MORE, default=[],
                             help='Further arguments (e.g., config file)')

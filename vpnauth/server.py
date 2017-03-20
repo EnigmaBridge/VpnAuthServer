@@ -115,6 +115,31 @@ class Server(object):
         self.last_result = code
         return code
 
+    def init_config(self):
+        """
+        Initializes configuration
+        :return:
+        """
+        if self.args.ebstall:
+            self.config = Config.from_file('/etc/enigma/config.json')
+            self.config.mysql_db = self.config.vpnauth_db
+            self.config.mysql_password = self.config.vpnauth_password
+            self.config.mysql_user = 'vpnauth'
+            return
+
+        self.config = Core.read_configuration()
+        if self.config is None or not self.config.has_nonempty_config():
+            sys.stderr.write('Configuration is empty: %s\nCreating default one... (fill in access credentials)\n'
+                             % Core.get_config_file_path())
+
+            Core.write_configuration(Config.default_config())
+            return self.return_code(1)
+
+        if self.args.server_debug and self.args.daemon:
+            # Server debug causes flask to restart the whole daemon (due to server reloading on code change)
+            logger.error('Server debug and deamon are mutually exclusive')
+            raise ValueError('Invalid start arguments')
+
     def init_log(self):
         """
         Initializes logging
@@ -847,20 +872,8 @@ class Server(object):
         Process configuration, initialize connections, databases, start threads.
         :return:
         """
-        self.config = Core.read_configuration()
-        if self.config is None or not self.config.has_nonempty_config():
-            sys.stderr.write('Configuration is empty: %s\nCreating default one... (fill in access credentials)\n'
-                             % Core.get_config_file_path())
-
-            Core.write_configuration(Config.default_config())
-            return self.return_code(1)
-
-        if self.args.server_debug and self.args.daemon:
-            # Server debug causes flask to restart the whole daemon (due to server reloading on code change)
-            logger.error('Server debug and deamon are mutually exclusive')
-            raise ValueError('Invalid start arguments')
-
         # Init
+        self.init_config()
         self.init_log()
         self.init_db()
         self.init_rest()
@@ -905,6 +918,9 @@ class Server(object):
 
         parser.add_argument('-d', '--daemon', dest='daemon', default=False, action='store_const', const=True,
                             help='Runs in daemon mode')
+
+        parser.add_argument('--ebstall', dest='ebstall', default=False, action='store_const', const=True,
+                            help='ebstall compatible mode - uses enigma configuration')
 
         parser.add_argument('--dump-stats', dest='dump_stats_file', default=None,
                             help='Dumping stats to a file')

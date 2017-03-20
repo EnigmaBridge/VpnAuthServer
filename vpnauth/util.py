@@ -28,7 +28,7 @@ def protect_payload(payload, config):
     :return:
     """
     js = json.dumps(payload)
-    key = make_key(config.enc_password)
+    key = make_key(config.vpnauth_enc_password)
 
     iv, ciphertext, tag = encrypt(key, plaintext=js)
 
@@ -54,7 +54,7 @@ def unprotect_payload(payload, config):
     if payload['enctype'] != PAYLOAD_ENC_TYPE:
         raise ValueError('Unknown payload protection: %s' % payload['enctype'])
 
-    key = make_key(config.enc_password)
+    key = make_key(config.vpnauth_enc_password)
     iv = base64.b64decode(payload['iv'])
     tag = base64.b64decode(payload['tag'])
     ciphertext = base64.b64decode(payload['payload'])

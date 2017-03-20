@@ -40,7 +40,7 @@ class Config(object):
                 'mysql_db': None,
                 'mysql_user': None,
                 'mysql_password': None,
-                'enc_password': None
+                'vpnauth_enc_password': None
             }
         })
 
@@ -94,12 +94,22 @@ class Config(object):
 
     # Encryption password for encrypting message notifications on the queue
     @property
-    def enc_password(self):
-        return self.get_config('enc_password')
+    def vpnauth_enc_password(self):
+        return self.get_config('vpnauth_enc_password')
 
-    @enc_password.setter
-    def enc_password(self, val):
-        self.set_config('enc_password', val)
+    @vpnauth_enc_password.setter
+    def vpnauth_enc_password(self, val):
+        self.set_config('vpnauth_enc_password', val)
 
+    # ebstall compatible configuration.
+    # vpn auth Db
+    @property
+    def vpnauth_db(self):
+        return self.get_config('vpnauth_db', default=None)
+
+    # vpn auth password
+    @property
+    def vpnauth_password(self):
+        return self.get_config('vpnauth_password', default=None)
 
 
