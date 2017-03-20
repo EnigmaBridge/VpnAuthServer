@@ -109,7 +109,7 @@ class Config(object):
 
     # vpn auth password
     @property
-    def vpnauth_password(self):
-        return self.get_config('vpnauth_password', default=None)
+    def vpnauth_db_password(self):
+        return self.get_config('vpnauth_db_password', default=None)
 
 
