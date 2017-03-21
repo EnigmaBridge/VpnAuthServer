@@ -810,6 +810,7 @@ class Server(object):
             folder = self.args.dump_stats_file.rsplit('/', 1)[0]
             if not os.path.exists(folder):
                 logger.info('Stat folder does not exist: %s' % folder)
+                return
 
             res = self.build_stats(add_meta=True)
             js = collections.OrderedDict()
