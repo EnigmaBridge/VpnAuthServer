@@ -43,7 +43,7 @@ class Notifier(object):
         self.last_result = code
         return code
 
-    def build_payload(self):
+    def build_payload(self, args=None):
         """
         Builds payload by extracting information from env vars
         :return:
@@ -70,6 +70,7 @@ class Notifier(object):
         add_payload(payload, 'duration', 'time_duration')
         add_payload(payload, 'bytes_sent', 'bytes_sent')
         add_payload(payload, 'bytes_recv', 'bytes_received')
+        payload['args'] = args
         payload['aux'] = dict(os.environ)
         return payload
 
@@ -113,7 +114,7 @@ class Notifier(object):
             logger.error('Unknown event: ')
             return
 
-        data = self.build_payload()
+        data = self.build_payload(args=self.args.args)
         js = collections.OrderedDict()
         js['evt'] = evt
         js['time'] = time.time()
