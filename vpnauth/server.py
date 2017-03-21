@@ -807,6 +807,10 @@ class Server(object):
             if self.args.dump_stats_file is None:
                 return
 
+            folder = self.args.dump_stats_file.rsplit('/', 1)[0]
+            if not os.path.exists(folder):
+                logger.info('Stat folder does not exist: %s' % folder)
+
             res = self.build_stats(add_meta=True)
             js = collections.OrderedDict()
             js['generated'] = time.time()
