@@ -79,6 +79,9 @@ class Notifier(object):
         Main entry
         :return:
         """
+        if self.args.vpncfg:
+            self.config = Config.from_file('/etc/openvpn/vpnauth.json')
+
         if self.args.ebstall:
             self.config = Config.from_file('/etc/enigma/config.json')
             self.config.mysql_db = self.config.vpnauth_db
@@ -150,6 +153,9 @@ class Notifier(object):
 
         parser.add_argument('--ebstall', dest='ebstall', default=False, action='store_const', const=True,
                             help='ebstall compatible mode - uses enigma configuration')
+
+        parser.add_argument('--vpncfg', dest='vpncfg', default=False, action='store_const', const=True,
+                            help='uses standard configuration stored in /etc/openvpn/vpnauth.json')
 
         parser.add_argument('args', nargs=argparse.ZERO_OR_MORE, default=[],
                             help='Further arguments (e.g., config file)')
