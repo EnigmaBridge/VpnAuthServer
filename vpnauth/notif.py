@@ -82,7 +82,7 @@ class Notifier(object):
         if self.args.vpncfg:
             self.config = Config.from_file('/etc/openvpn/vpnauth.json')
 
-        if self.args.ebstall:
+        elif self.args.ebstall:
             self.config = Config.from_file('/etc/enigma/config.json')
             self.config.mysql_db = self.config.vpnauth_db
             self.config.mysql_password = self.config.vpnauth_db_password
