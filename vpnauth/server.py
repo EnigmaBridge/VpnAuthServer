@@ -219,9 +219,10 @@ class Server(object):
         :return:
         """
         obj = collections.OrderedDict()
+        cname_parts = user.cname.split('/', 1)
         obj['cname'] = user.cname
-        obj['email'] = user.cname.split('/', 1)[0]
-        obj['device'] = user.cname.split('/', 1)[1]
+        obj['email'] = cname_parts[0]
+        obj['device'] = cname_parts[1] if len(cname_parts) > 1 else None
         obj['connected'] = user.connected
 
         obj['date_updated'] = calendar.timegm(user.date_updated.timetuple())
