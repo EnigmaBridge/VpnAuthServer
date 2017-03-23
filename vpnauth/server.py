@@ -220,6 +220,8 @@ class Server(object):
         """
         obj = collections.OrderedDict()
         obj['cname'] = user.cname
+        obj['email'] = user.cname.split('/', 1)[0]
+        obj['device'] = user.cname.split('/', 1)[1]
         obj['connected'] = user.connected
 
         obj['date_updated'] = calendar.timegm(user.date_updated.timetuple())
