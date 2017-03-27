@@ -654,7 +654,7 @@ class Server(object):
 
                 db_user.last_flush_sent = 0
                 db_user.last_flush_recv = 0
-                db_user.last_flush_time = salch.func.now()
+                db_user.last_flush_time = None
 
             else:
                 db_user.bytes_sent = user['bytes_sent']
