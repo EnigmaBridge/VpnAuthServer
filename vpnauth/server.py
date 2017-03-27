@@ -234,6 +234,11 @@ class Server(object):
         obj['proto'] = user.proto
         obj['bytes_sent'] = user.bytes_sent
         obj['bytes_recv'] = user.bytes_recv
+
+        obj['last_flush_time'] = calendar.timegm(user.last_flush_time.timetuple()) if user.last_flush_time is not None else None
+        obj['last_flush_sent'] = user.last_flush_sent
+        obj['last_flush_recv'] = user.last_flush_recv
+
         return obj
 
     def on_stats(self, request):
@@ -345,9 +350,6 @@ class Server(object):
                 self.disconnected_cache[js['cname']] = time.time()
 
             self.store_user_state(js, s, on_connected=on_connected)
-            if not on_connected:
-                self.store_user_session(js, s)
-
             s.commit()
 
         except Exception as e:
@@ -394,7 +396,7 @@ class Server(object):
             stats_base[user] = 0, 0
         for cl in connected_clients:
             if cl.connected == 1:
-                stats_base[cl.cname] = cl.bytes_sent, cl.bytes_recv
+                stats_base[cl.cname] = cl.bytes_sent - cl.last_flush_sent, cl.bytes_recv - cl.last_flush_recv
 
         map_day, map_week, map_month = self.aggregation_maps(users, last_day, last_week, last_month)
         res = collections.OrderedDict()
@@ -448,8 +450,15 @@ class Server(object):
 
         connected_time = calendar.timegm(state.date_connected.timetuple())
         duration = time.time() - connected_time
-
         disconnected = datetime.now()
+
+        # Adjust duration so it corresponds to the last flush
+        if state.last_flush_time is not None:
+            flush_utc = calendar.timegm(state.last_flush_time.timetuple())
+            duration = max(0, min(duration, duration - (time.time() - flush_utc)))
+            db_user.record_type = 3
+
+        db_user.date_connected_conn = state.date_connected
         db_user.date_disconnected = disconnected
         db_user.date_connected = disconnected - timedelta(seconds=duration)
 
@@ -458,8 +467,8 @@ class Server(object):
         db_user.client_remote_ip = state.client_remote_ip
         db_user.client_remote_port = state.client_remote_port
 
-        db_user.bytes_sent = state.bytes_sent
-        db_user.bytes_recv = state.bytes_recv
+        db_user.bytes_sent = state.bytes_sent - state.last_flush_sent
+        db_user.bytes_recv = state.bytes_recv - state.last_flush_recv
         db_user.duration = duration
         return db_user
 
@@ -601,7 +610,7 @@ class Server(object):
 
     def store_user_state(self, user, s, on_connected=True):
         """
-        Stores username to the database.
+        Stores username to the database, on connection change.
         :param user:
         :param s: session
         :param on_connected:
@@ -617,6 +626,10 @@ class Server(object):
             else:
                 new_one = False
 
+                # Transform to session on disconnect
+                if not on_connected:
+                    self.store_user_session(user, s, state=db_user)
+
             db_user.date_updated = salch.func.now()
             db_user.connected = 1 if on_connected else 0
             db_user.proto = user['proto']
@@ -629,6 +642,10 @@ class Server(object):
                 db_user.bytes_recv = 0
                 db_user.date_connected = salch.func.now()
 
+                db_user.last_flush_sent = 0
+                db_user.last_flush_recv = 0
+                db_user.last_flush_time = salch.func.now()
+
             else:
                 db_user.bytes_sent = user['bytes_sent']
                 db_user.bytes_recv = user['bytes_recv']
@@ -638,6 +655,7 @@ class Server(object):
                 s.add(db_user)
             else:
                 s.merge(db_user)
+
             return 0
 
         except Exception as e:
@@ -687,6 +705,7 @@ class Server(object):
             if new_one:
                 s.add(db_user)
             else:
+                self.check_user_flush_session(db_user, s)
                 s.merge(db_user)
             return 0
 
@@ -695,22 +714,55 @@ class Server(object):
             logger.warning('User query problem: %s' % e)
             return 1
 
-    def store_user_session(self, user, s):
+    def check_user_flush_session(self, db_user, s):
         """
-        Stores a new user session to DB
+        Check if the user can be flushed to session
+        :param db_user: 
+        :return: 
+        """
+        if db_user.date_connected is None:
+            return
+        if util.is_dbdate_today(db_user.date_connected):
+            return
+        if db_user.last_flush_time is not None and util.is_dbdate_today(db_user.last_flush_time):
+            return
+
+        # Create a new session for yesterday
+        session = self.session_from_state(db_user)
+        session.record_type = 3
+        s.add(session)
+
+        # Update state
+        db_user.last_flush_time = salch.func.now()
+        db_user.last_flush_sent = db_user.bytes_sent
+        db_user.last_flush_recv = db_user.bytes_recv
+
+    def store_user_session(self, user, s, state=None):
+        """
+        Stores a new user session to DB.
+        Used to create a session from the state when user is detected as disconnected.
         :param user:
         :param s:
+        :param state:
         :return:
         """
         try:
+            if state is None:
+                logger.info('No session transform for new users')
+                return
+
+            if state.connected != 1:
+                logger.debug('Not connected - not going to transform to session')
+                return
+
             db_user = VpnUserSessions()
             db_user.cname = user['cname']
 
             duration = int(user['duration'])
             disconnected = datetime.now()
-            db_user.date_disconnected = disconnected
-            db_user.date_connected = disconnected - timedelta(seconds=duration)
 
+            db_user.date_connected_conn = state.date_connected
+            db_user.date_disconnected = disconnected
             db_user.proto = user['proto']
             db_user.client_local_ip = user['local_ip']
             db_user.client_remote_ip = user['remote_ip']
@@ -718,6 +770,17 @@ class Server(object):
 
             db_user.bytes_sent = int(user['bytes_sent'])
             db_user.bytes_recv = int(user['bytes_recv'])
+
+            # Adjust duration so it corresponds to the last flush
+            if state.last_flush_time is not None:
+                flush_utc = calendar.timegm(state.last_flush_time.timetuple())
+                duration = max(0, min(duration, duration - (time.time() - flush_utc)))
+
+                db_user.bytes_sent -= state.last_flush_sent
+                db_user.bytes_recv -= state.last_flush_recv
+                db_user.record_type = 3
+
+            db_user.date_connected = disconnected - timedelta(seconds=duration)
             db_user.duration = duration
             s.add(db_user)
 

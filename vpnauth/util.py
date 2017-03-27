@@ -9,6 +9,7 @@ import base64
 import collections
 import datetime
 import shutil
+import calendar
 
 import errno
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -266,4 +267,28 @@ def get_user_from_cname(cname):
     if cname is None:
         return None
     return cname.split('/', 1)[0]
+
+
+def is_utc_today(utc):
+    """
+    Returns true if the UTC is today
+    :param utc: 
+    :return: 
+    """
+    current_time = datetime.datetime.utcnow()
+    day_start = current_time - datetime.timedelta(hours=current_time.hour, minutes=current_time.minute,
+                                                  seconds=current_time.second)
+
+    day_start_utc = unix_time(day_start)
+    return (utc - day_start_utc) >= 0
+
+
+def is_dbdate_today(dbdate):
+    """
+    Returns true if the database DateTime column is today
+    :param dbdate: 
+    :return: 
+    """
+    utc = calendar.timegm(dbdate.timetuple())
+    return is_utc_today(utc)
 

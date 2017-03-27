@@ -44,6 +44,10 @@ class VpnUserState(Base):
     bytes_sent = Column(BigInteger, nullable=True)
     bytes_recv = Column(BigInteger, nullable=True)
 
+    last_flush_time = Column(DateTime, nullable=True)
+    last_flush_sent = Column(BigInteger, nullable=False, default=0)
+    last_flush_recv = Column(BigInteger, nullable=False, default=0)
+
 
 class VpnUserSessions(Base):
     """
@@ -53,6 +57,7 @@ class VpnUserSessions(Base):
     id = Column(BigInteger, primary_key=True)
     cname = Column(String(255), nullable=False)
 
+    date_connected_conn = Column(DateTime, default=func.now())
     date_connected = Column(DateTime, default=func.now())
     date_disconnected = Column(DateTime, default=func.now())
 
