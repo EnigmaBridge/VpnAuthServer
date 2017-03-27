@@ -292,3 +292,22 @@ def is_dbdate_today(dbdate):
     utc = calendar.timegm(dbdate.timetuple())
     return is_utc_today(utc)
 
+
+def get_yesterday_date_end():
+    """
+    Returns yesterday midnight date time.
+    :return: 
+    """
+    ct = datetime.datetime.utcnow()
+    return datetime.datetime(year=ct.year, month=ct.month, day=ct.day, hour=23, minute=59, second=59) - \
+           datetime.timedelta(days=1)
+
+
+def get_today_date_start():
+    """
+    Returns yesterday midnight date time.
+    :return: 
+    """
+    ct = datetime.datetime.utcnow()
+    return datetime.datetime(year=ct.year, month=ct.month, day=ct.day, hour=0, minute=0, second=0)
+

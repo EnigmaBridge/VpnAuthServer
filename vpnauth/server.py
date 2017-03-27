@@ -439,10 +439,11 @@ class Server(object):
         util.silent_close(s)
         return res
 
-    def session_from_state(self, state):
+    def session_from_state(self, state, on_flush=False):
         """
         Converts state view to the session record
         :param VpnUserState state:
+        :param on_flush: if true the session is created on flush
         :return:
         """
         db_user = VpnUserSessions()
@@ -451,6 +452,12 @@ class Server(object):
         connected_time = calendar.timegm(state.date_connected.timetuple())
         duration = time.time() - connected_time
         disconnected = datetime.now()
+
+        # If flushing keep the record in the previous day
+        if on_flush:
+            yesterday_day_end = util.get_yesterday_date_end()
+            if (disconnected - yesterday_day_end) < timedelta(hours=2):
+                disconnected = yesterday_day_end
 
         # Adjust duration so it corresponds to the last flush
         if state.last_flush_time is not None:
@@ -461,6 +468,9 @@ class Server(object):
         db_user.date_connected_conn = state.date_connected
         db_user.date_disconnected = disconnected
         db_user.date_connected = disconnected - timedelta(seconds=duration)
+
+        if db_user.date_connected < db_user.date_connected_conn:
+            db_user.date_connected = db_user.date_connected_conn
 
         db_user.proto = state.proto
         db_user.client_local_ip = state.client_local_ip
@@ -728,7 +738,7 @@ class Server(object):
             return
 
         # Create a new session for yesterday
-        session = self.session_from_state(db_user)
+        session = self.session_from_state(db_user, on_flush=True)
         session.record_type = 3
         s.add(session)
 
