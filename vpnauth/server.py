@@ -462,7 +462,7 @@ class Server(object):
         # Adjust duration so it corresponds to the last flush
         if state.last_flush_time is not None:
             flush_utc = calendar.timegm(state.last_flush_time.timetuple())
-            duration = max(0, min(duration, duration - (time.time() - flush_utc)))
+            duration = max(0, min(duration, time.time() - flush_utc))
             db_user.record_type = 3
 
         db_user.date_connected_conn = state.date_connected
@@ -784,11 +784,11 @@ class Server(object):
             # Adjust duration so it corresponds to the last flush
             if state.last_flush_time is not None:
                 flush_utc = calendar.timegm(state.last_flush_time.timetuple())
-                duration = max(0, min(duration, duration - (time.time() - flush_utc)))
+                duration = max(0, min(duration, time.time() - flush_utc))
 
                 db_user.bytes_sent -= state.last_flush_sent
                 db_user.bytes_recv -= state.last_flush_recv
-                db_user.record_type = 3
+                db_user.record_type = 4
 
             db_user.date_connected = disconnected - timedelta(seconds=duration)
             db_user.duration = duration
