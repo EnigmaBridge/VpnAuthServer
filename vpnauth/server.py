@@ -235,6 +235,10 @@ class Server(object):
         obj['bytes_sent'] = user.bytes_sent
         obj['bytes_recv'] = user.bytes_recv
 
+        obj['email_nonce'] = user.email_nonce
+        obj['cname_nonce'] = user.cname_nonce
+        obj['session_nonce'] = user.session_nonce
+
         obj['last_flush_time'] = calendar.timegm(user.last_flush_time.timetuple()) if user.last_flush_time is not None else None
         obj['last_flush_sent'] = user.last_flush_sent
         obj['last_flush_recv'] = user.last_flush_recv
@@ -618,6 +622,27 @@ class Server(object):
         })
         self.db.get_engine().execute(stmt)
 
+    def _get_email_nonce(self, user, s):
+        """
+        Email based nonce is unique string generated once per email in the state table
+        Method is called when new user record is being inserted to determine if the email nonce should
+        be generated as new or re-used
+        :return: 
+        """
+        try:
+            user = util.get_user_from_cname(user['cname'])
+            cname_prefix = user + '/'
+
+            db_user = s.query(VpnUserState).filter(VpnUserState.cname.startswith(cname_prefix)).one_or_none()
+            if db_user is None:
+                return util.random_nonce(32)
+            else:
+                return db_user.email_nonce
+
+        except Exception as e:
+            logger.error('Exception in loading email nonce: %s' % e)
+            logger.debug(traceback.format_exc())
+
     def store_user_state(self, user, s, on_connected=True):
         """
         Stores username to the database, on connection change.
@@ -633,6 +658,8 @@ class Server(object):
             if db_user is None:
                 db_user = VpnUserState()
                 db_user.cname = user['cname']
+                db_user.email_nonce = self._get_email_nonce(user, s)
+                db_user.cname_nonce = util.random_nonce(32)
             else:
                 new_one = False
 
@@ -655,6 +682,7 @@ class Server(object):
                 db_user.last_flush_sent = 0
                 db_user.last_flush_recv = 0
                 db_user.last_flush_time = None
+                db_user.session_nonce = util.random_nonce(32)
 
             else:
                 db_user.bytes_sent = user['bytes_sent']

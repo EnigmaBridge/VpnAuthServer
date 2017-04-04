@@ -10,6 +10,8 @@ import collections
 import datetime
 import shutil
 import calendar
+import string
+import random
 
 import errno
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -310,4 +312,13 @@ def get_today_date_start():
     """
     ct = datetime.datetime.utcnow()
     return datetime.datetime(year=ct.year, month=ct.month, day=ct.day, hour=0, minute=0, second=0)
+
+
+def random_nonce(length):
+    """
+    Generates a random password which consists of digits, lowercase and uppercase characters
+    :param length:
+    :return:
+    """
+    return ''.join(random.SystemRandom().choice(string.ascii_letters + string.digits + "_") for _ in range(length))
 
