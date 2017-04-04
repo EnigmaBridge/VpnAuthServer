@@ -41,6 +41,10 @@ class VpnUserState(Base):
     client_remote_port = Column(Integer, nullable=True)
     proto = Column(String(16), nullable=True)
 
+    email_nonce = Column(String(255), nullable=True)
+    cname_nonce = Column(String(255), nullable=True)
+    session_nonce = Column(String(255), nullable=True)
+
     bytes_sent = Column(BigInteger, nullable=True)
     bytes_recv = Column(BigInteger, nullable=True)
 
