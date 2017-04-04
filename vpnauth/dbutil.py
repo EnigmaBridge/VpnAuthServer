@@ -39,7 +39,7 @@ class VpnUserState(Base):
     client_local_ip = Column(String(128), nullable=True)
     client_remote_ip = Column(String(128), nullable=True)
     client_remote_port = Column(Integer, nullable=True)
-    proto = Column(String(8), nullable=True)
+    proto = Column(String(16), nullable=True)
 
     bytes_sent = Column(BigInteger, nullable=True)
     bytes_recv = Column(BigInteger, nullable=True)
