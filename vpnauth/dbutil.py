@@ -75,6 +75,7 @@ class VpnUserSessions(Base):
     bytes_recv = Column(BigInteger, nullable=True)
 
     record_type = Column(Integer, nullable=False, default=0)
+    records_aggregated = Column(Integer, nullable=False, default=0)
 
 
 class MySQL(object):

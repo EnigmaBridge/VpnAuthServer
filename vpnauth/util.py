@@ -305,6 +305,16 @@ def get_yesterday_date_end():
            datetime.timedelta(days=1)
 
 
+def get_7days_before_date_end():
+    """
+    Returns yesterday midnight date time.
+    :return: 
+    """
+    ct = datetime.datetime.utcnow()
+    return datetime.datetime(year=ct.year, month=ct.month, day=ct.day, hour=23, minute=59, second=59) - \
+           datetime.timedelta(days=7)
+
+
 def get_today_date_start():
     """
     Returns yesterday midnight date time.

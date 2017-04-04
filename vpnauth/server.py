@@ -17,6 +17,7 @@ import os
 import sys
 import util
 import json
+import itertools
 import argparse
 import calendar
 from threading import RLock as RLock
@@ -78,6 +79,11 @@ class Server(object):
         self.status_thread_lock = RLock()
         self.status_last_check = 0
         self.status_check_time = 5
+
+        self.cleanup_last_check = 0
+        self.cleanup_check_time = 60
+        self.cleanup_thread = None
+        self.cleanup_thread_lock = RLock()
 
     def check_pid(self, retry=True):
         """
@@ -927,6 +933,86 @@ class Server(object):
             logger.debug(traceback.format_exc())
 
     #
+    # DB cleanup
+    #
+
+    def cleanup_main(self):
+        """
+        DB trimming & general cleanup thread
+        :return:
+        """
+        logger.info('Cleanup thread started %s %s %s' % (os.getpid(), os.getppid(), threading.current_thread()))
+        try:
+            while not self.stop_event.is_set():
+                try:
+                    time.sleep(0.2)
+                    cur_time = time.time()
+                    if self.cleanup_last_check + self.cleanup_check_time > cur_time:
+                        continue
+
+                    self.trim_sessions_db()
+                    self.cleanup_last_check = cur_time
+
+                except Exception as e:
+                    logger.error('Exception in DB cleanup: %s' % e)
+                    logger.debug(traceback.format_exc())
+
+        except Exception as e:
+            logger.error('Exception: %s' % e)
+            logger.debug(traceback.format_exc())
+
+        logger.info('Status loop terminated')
+
+    def trim_sessions_db(self):
+        """
+        Trims sessions, for sessions older than 7 days trim all to one.
+        :return: 
+        """
+        s = self.db.get_session()
+        dtresh = util.get_7days_before_date_end()
+        try:
+            sessions = s.query(VpnUserSessions).filter(VpnUserSessions.date_disconnected <= dtresh).all()
+
+            # sorting & grouping function
+            def grpby_key(x):
+                dd = x.date_disconnected
+                return x.cname, dd.year, dd.month, dd.day, x.client_remote_ip,
+
+            # sort & group by
+            sessions = sorted(sessions, key=grpby_key)
+            for k, g in itertools.groupby(sessions, grpby_key):
+                sess2colapse = list(g)
+                merging_obj = min(sess2colapse, key=lambda x: x.id)
+                sessions_delete = [x for x in sess2colapse if x.id != merging_obj.id]
+                if len(sessions_delete) == 0:
+                    continue
+
+                duration = sum([x.duration for x in sess2colapse])
+                date_connected = min([x.date_connected for x in sess2colapse])
+                date_disconnected = max([x.date_disconnected for x in sess2colapse])
+                bytes_sent = sum([x.bytes_sent for x in sess2colapse])
+                bytes_recv = sum([x.bytes_recv for x in sess2colapse])
+
+                merging_obj.duration = duration
+                merging_obj.date_connected = date_connected
+                merging_obj.date_disconnected = date_disconnected
+                merging_obj.bytes_sent = bytes_sent
+                merging_obj.bytes_recv = bytes_recv
+                merging_obj.records_aggregated = len(sess2colapse)
+
+                for elem in sessions_delete:
+                    s.delete(elem)
+                s.commit()
+
+        except Exception as e:
+            logger.warning('Exception in db trimming %s' % e)
+            logger.warning(traceback.format_exc())
+
+        finally:
+            util.silent_close(s)
+
+
+    #
     # Server
     #
 
@@ -994,6 +1080,10 @@ class Server(object):
         self.status_thread = threading.Thread(target=self.status_main, args=())
         self.status_thread.setDaemon(True)
         self.status_thread.start()
+
+        self.cleanup_thread = threading.Thread(target=self.cleanup_main, args=())
+        self.cleanup_thread.setDaemon(True)
+        self.cleanup_thread.start()
 
         # Daemon vs. run mode.
         if self.args.daemon:
