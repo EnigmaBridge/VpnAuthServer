@@ -3,7 +3,7 @@ import sys
 from setuptools import setup
 from setuptools import find_packages
 
-version = '0.0.11'
+version = '0.0.12'
 
 # Please update tox.ini when modifying dependency version requirements
 install_requires = [
@@ -20,7 +20,8 @@ install_requires = [
     'future',
     'SQLAlchemy',
     'shellescape',
-    'flask'
+    'flask',
+    'MarkupSafe>=0.23',  # problem with deps
 ]
 
 # env markers in extras_require cause problems with older pip: #517
