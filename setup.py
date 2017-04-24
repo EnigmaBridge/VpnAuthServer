@@ -3,7 +3,7 @@ import sys
 from setuptools import setup
 from setuptools import find_packages
 
-version = '0.0.12'
+version = '0.0.13'
 
 # Please update tox.ini when modifying dependency version requirements
 install_requires = [
@@ -53,7 +53,7 @@ setup(
     name='vpnauth',
     version=version,
     description='Enigma Bridge VPN authenticator',
-    url='https://github.com/EnigmaBridge/ebstall.py',
+    url='https://github.com/EnigmaBridge/VpnAuthServer',
     author="Enigma Bridge",
     author_email='info@enigmabridge.com',
     license=open('LICENSE').read(),
